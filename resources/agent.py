@@ -1,7 +1,6 @@
-import sqlite3
-import os
+import sqlite3, os
 from flask_restful import Resource, reqparse
-from flask_jwt import jwt_required
+from models.agent import AgentModel
 
 
 class Agent(Resource):
@@ -11,62 +10,48 @@ class Agent(Resource):
     parser.add_argument('function', type=str, required=False)
 
     def get(self, hostname):
-        agent = next(
-            filter(lambda x: safe_str_cmp(x['hostname'], hostname), agents),
-            None)
-        return {'agent': agent}, 200 if agent else 404
+        agent = AgentModel.find_by_name(hostname)
+        if agent:
+            return agent.json()
+        return {'message': 'Agent not found'}, 400
 
     def post(self, hostname):
-        if next(filter(lambda x: x['hostname'] == hostname, agents), None):
+        if AgentModel.find_by_name(hostname):
             return {
                 'message':
                 "An agent with hostname  '{}' already exists.".format(hostname)
             }, 404
+
         data = Agent.parser.parse_args()
-        agent = {
-            'hostname': hostname,
-            'os': data['os'],
-            'location': data['location']
-        }
-        agents.append(agent)
-        return agent, 201
+        agent = AgentModel(hostname, **data)
+        try:
+            agent.add_to_db()
+        except:
+            return {'message': 'An error occurred inserting the agent'}, 500
+        return agent.json(), 201
 
     def delete(self, hostname):
-        global agents
-        agents = list(filter(lambda x: x['hostname'] != hostname, agents))
+        agent = AgentModel.find_by_name(hostname)
+        try:
+            if agent:
+                agent.delete_from_db()
+        except:
+            return {'message': 'An error occurred deleting the agent'}, 500
         return {'message': 'Agent deleted'}
 
     def put(self, hostname):
         data = Agent.parser.parse_args()
-        agent = next(
-            filter(lambda x: safe_str_cmp(x['hostname'], hostname), agents),
-            None)
-        if agent == None:
-            agent = {
-                'hostname': hostname,
-                'os': data['os'],
-                'location': data['location']
-            }
-            agents.append(agent)
+        agent = AgentModel.find_by_name(hostname)
+        if agent is None:
+            agent = AgentModel(hostname, **data)
         else:
-            agent.update(data)
-        return agent
+            agent.os = data['os']
+            agent.location = data['location']
+            agent.scope = data['function']
+        agent.add_to_db()
+        return agent.json()
 
 
 class AgentList(Resource):
     def get(self):
-        conn = sqlite3.connect(os.path.join('..', 'db', 'servers.db'))
-        cursor = conn.cursor()
-
-        result = cursor.execute(
-            'SELECT agentName, os, location, function FROM agents')
-        servers = []
-        for row in result:
-            servers.append({
-                'agentName': row[0],
-                'os': row[1],
-                'location': row[2],
-                'function': row[3]
-            })
-        conn.commit()
-        conn.close()
+        return {'agents': [x.json() for x in AgentModel.query.all()]}

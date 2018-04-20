@@ -1,6 +1,6 @@
-import sqlite3
-import os
+import sqlite3, os
 from flask_restful import Resource, reqparse
+from models.server import ServerModel
 
 
 class Server(Resource):
@@ -9,145 +9,50 @@ class Server(Resource):
     parser.add_argument('location', type=str, required=False)
     parser.add_argument('agent', type=str, required=True)
 
-    @classmethod
-    def find_by_name(cls, hostname):
-        conn = sqlite3.connect(os.path.join('..', 'db', 'servers.db'))
-        cursor = conn.cursor()
-        row = cursor.execute(
-            'SELECT * FROM servers_inventory  WHERE serverName LIKE ?',
-            (hostname, )).fetchone()
-        conn.close()
-        if row:
-            return {
-                'server': {
-                    'serverName': row[0],
-                    'agentName': row[1],
-                    'enabled': row[2],
-                    'os': row[3],
-                    'location': row[4]
-                }
-            }
-
-    @classmethod
-    def insert_new_server(cls, server):
-        conn = sqlite3.connect(os.path.join('..', 'db', 'servers.db'))
-        cursor = conn.cursor()
-
-        result = cursor.execute('''
-				INSERT OR IGNORE INTO servers_inventory (serverName, agentName, os, enabled, location, scope) 
-				VALUES (?,?, ?, 1, ?, '')
-				''', (server['serverName'], server['agentName'], server['os'],
-          server['location']))
-
-        conn.commit()
-        conn.close()
-
-    @classmethod
-    def update_server(cls, server):
-        conn = sqlite3.connect(os.path.join('..', 'db', 'servers.db'))
-        cursor = conn.cursor()
-
-        result = cursor.execute('''
-						UPDATE servers_inventory  
-						SET agentName = ?,
-							os = ?,  
-							location = ? 
-						WHERE serverName LIKE ? 
-						''', (server['agentName'], server['os'], server['location'],
-            server['serverName']))
-
-        conn.commit()
-        conn.close()
-
     def get(self, hostname):
-        try:
-            server = self.find_by_name(hostname)
-        except:
-            return {'message': 'An error occurred searching the server'}, 500
-
+        server = ServerModel.find_by_name(hostname)
         if server:
-            return server
+            return server.json()
         return {'message': 'Server not found'}, 400
 
     def post(self, hostname):
-        if self.find_by_name(hostname):
+        if ServerModel.find_by_name(hostname):
             return {
                 'message':
                 "A server with hostname  '{}' already exists.".format(hostname)
             }, 400
 
         data = Server.parser.parse_args()
-        server = {
-            'serverName': hostname,
-            'agentName': data['agent'],
-            'os': data['os'],
-            'location': data['location']
-        }
-
+        server = ServerModel(hostname, **data)
         try:
-            self.insert_new_server(server)
+            server.add_to_db()
         except:
             return {'message': 'An error occurred inserting the server'}, 500
-        return server, 201
+        return server.json(), 201
 
     def delete(self, hostname):
-        try:
-            conn = sqlite3.connect(os.path.join('..', 'db', 'servers.db'))
-            cursor = conn.cursor()
-
-            cursor.execute(
-                'DELETE FROM servers_inventory WHERE serverName LIKE ?',
-                (hostname, ))
-
-            conn.commit()
-            conn.close()
-        except:
-            return {'message': 'An error occurred deleting the server'}, 500
+        server = Server.find_by_name(hostname)
+        if server:
+            server.delete_from_db()
         return {'message': 'Server deleted'}
 
     def put(self, hostname):
         data = Server.parser.parse_args()
-        server = {
-            'serverName': hostname,
-            'agentName': data['agent'],
-            'os': data['os'],
-            'location': data['location']
-        }
 
-        if self.find_by_name(hostname):
-            try:
-                self.update_server(server)
-            except:
-                return {
-                    'message': 'An error occurred updating the server'
-                }, 500
+        server = Server.find_by_name(hostname)
+
+        if server is None:
+            server = ServerModel(hostname, **data)
         else:
-            try:
-                self.insert_new_server(server)
-            except:
-                return {
-                    'message': 'An error occurred inserting the server'
-                }, 500
-        return server
+            server.agentName = data['agentName']
+            server.enabled = data['enabled']
+            server.os = data['os']
+            server.location = data['location']
+            server.scope = data['scope']
+        server.add_to_db()
+        return server.json()
 
 
 class ServerList(Resource):
     def get(self):
-        conn = sqlite3.connect(os.path.join('..', 'db', 'servers.db'))
-        cursor = conn.cursor()
-
-        result = cursor.execute(
-            'SELECT serverName, agentName, os, location FROM servers_inventory'
-        )
-        servers = []
-        for row in result:
-            servers.append({
-                'serverName': row[0],
-                'agentName': row[1],
-                'os': row[2],
-                'location': row[3]
-            })
-        conn.commit()
-        conn.close()
-
-        return {'servers': servers}
+        return {'servers': [x.json() for x in ServerModel.query.all()]}
