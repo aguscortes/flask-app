@@ -43,7 +43,7 @@ class Agent(Resource):
         data = Agent.parser.parse_args()
         agent = AgentModel.find_by_name(hostname)
         if agent is None:
-            agent = AgentModel(hostname, **data)
+            agent = AgentModel(hostname, data['os'], data['location'], data['function'])
         else:
             agent.os = data['os']
             agent.location = data['location']

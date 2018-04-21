@@ -7,7 +7,7 @@ from resources.server import Server, ServerList
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join('.', 'db' , 'test.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join('.', 'db' , 'data.db')
 api = Api(app)
 
 

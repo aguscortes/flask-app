@@ -7,7 +7,9 @@ class Server(Resource):
     parser = reqparse.RequestParser()
     parser.add_argument('os', type=str, required=False)
     parser.add_argument('location', type=str, required=False)
-    parser.add_argument('agent', type=str, required=True)
+    parser.add_argument('agentName', type=str, required=True)
+    parser.add_argument('enabled', type=str, required=True)
+    parser.add_argument('scope', type=str, required=True)
 
     def get(self, hostname):
         server = ServerModel.find_by_name(hostname)
@@ -31,7 +33,7 @@ class Server(Resource):
         return server.json(), 201
 
     def delete(self, hostname):
-        server = Server.find_by_name(hostname)
+        server = ServerModel.find_by_name(hostname)
         if server:
             server.delete_from_db()
         return {'message': 'Server deleted'}
@@ -39,7 +41,7 @@ class Server(Resource):
     def put(self, hostname):
         data = Server.parser.parse_args()
 
-        server = Server.find_by_name(hostname)
+        server = ServerModel.find_by_name(hostname)
 
         if server is None:
             server = ServerModel(hostname, **data)
